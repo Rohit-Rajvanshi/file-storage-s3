@@ -2,13 +2,20 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
 )
 
 func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Request) {
+
+
+
 	videoIDString := r.PathValue("videoID")
 	videoID, err := uuid.Parse(videoIDString)
 	if err != nil {
@@ -31,7 +38,63 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
 
-	// TODO: implement the upload here
+	const maxMemory = 10 << 20
+	err = r.ParseMultipartForm(maxMemory)
+	if err != nil {
+		respondWithError(w , 500 , "Couldnt Parse Max Memory" , err)
+	}
 
-	respondWithJSON(w, http.StatusOK, struct{}{})
+	data , header , err := r.FormFile("thumbnail")
+	if err != nil {
+		respondWithError(w , http.StatusBadRequest , "Error fetching file data and headers" , err)
+		return 
+	}
+
+	mediaType := header.Header.Get("Content-Type")
+
+	videoData , err  := cfg.db.GetVideo(videoID)
+	if err != nil {
+		respondWithError(w , 500 , "Error fetching metadata" , err)
+		return 
+	}
+
+	if userID != videoData.UserID {
+		respondWithError(w , 401 , "Unknown User" , err)
+		return 
+	}
+
+	fileExtension := strings.Split(mediaType , "image/")
+	fileExtensionString := strings.Join(fileExtension , "")
+
+	pathElement := fmt.Sprintf("%s.%s" , videoIDString , fileExtensionString)
+	
+	filePath := filepath.Join("."  , cfg.assetsRoot , pathElement)
+
+	destFile , err := os.Create(filePath)
+	if err != nil {
+		respondWithError(w , 500 , "Error Creating a FilePath" , err)
+		return 
+	}
+
+	_ , err = io.Copy(destFile , data)
+	if err != nil {
+		respondWithError(w , 500 , "Error copying the multipart.File to the new file" , err)
+		return 
+	}
+
+	thumbnailURL := fmt.Sprintf("http://localhost:%s/%s", cfg.port , filePath)
+
+	videoData.ThumbnailURL = &thumbnailURL
+
+	err = cfg.db.UpdateVideo(videoData)
+	if err != nil {
+		respondWithError(w , 500 , "Error Updating the video" , err)
+		return
+	}
+
+	defer data.Close()
+	defer destFile.Close()
+
+	respondWithJSON(w, http.StatusOK, videoData)
 }
+
