@@ -1,13 +1,15 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
 )
@@ -50,7 +52,12 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return 
 	}
 
-	mediaType := header.Header.Get("Content-Type")
+	mediaType , _ , err  := mime.ParseMediaType(header.Header.Get("Content-Type"))
+
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(w , 400 , "Error uploading the File. Upload .jpeg / .png files only" , err)
+		return 
+	}
 
 	videoData , err  := cfg.db.GetVideo(videoID)
 	if err != nil {
@@ -59,14 +66,20 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	if userID != videoData.UserID {
-		respondWithError(w , 401 , "Unknown User" , err)
+		respondWithError(w , 403 , "Unauthorized" , nil)
 		return 
 	}
 
 	fileExtension := strings.Split(mediaType , "image/")
 	fileExtensionString := strings.Join(fileExtension , "")
 
-	pathElement := fmt.Sprintf("%s.%s" , videoIDString , fileExtensionString)
+	thumbIDBytes := make([]byte , 32)
+	rand.Read(thumbIDBytes)
+
+	thumbID := base64.RawURLEncoding.EncodeToString(thumbIDBytes)
+
+
+	pathElement := fmt.Sprintf("%s.%s" , thumbID , fileExtensionString)
 	
 	filePath := filepath.Join("."  , cfg.assetsRoot , pathElement)
 
