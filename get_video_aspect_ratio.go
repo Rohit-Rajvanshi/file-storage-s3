@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"os/exec"
 )
 
@@ -50,11 +49,7 @@ func getVideoAspectRatio (filePath string) (string , error) {
 		}else {
 			ratio = "other"
 		}
-		fmt.Println(elem , ratioFloat)
 	}
 
-	fmt.Println(ratio)
-
 	return ratio , nil 
-
 }

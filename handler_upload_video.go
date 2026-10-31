@@ -78,6 +78,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	defer os.Remove(tempFile.Name())
 	defer tempFile.Close()
 
+
 	_ , err = io.Copy(tempFile , data)
 	if err != nil {
 		respondWithError(w , 500 , "Error copying the multipart.File to the new file" , err)
@@ -109,15 +110,22 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		aspectPrefix = "other"
 	}
 
+	processedVideo , err  := processVideoForFastStart(tempFile.Name())
 
 
+	processedVideoFile , err  := os.Open(processedVideo)
+	if err != nil {
+		respondWithError(w , 500 , "error creating a processed video" , err)
+		return 
+	}
 
 	vidKeyExtension :=  aspectPrefix + "/" + vidKey + ".mp4" 
+
 
 	_ , err = cfg.s3Client.PutObject(r.Context() , &s3.PutObjectInput{
 		Bucket: &cfg.s3Bucket,
 		Key: &vidKeyExtension,
-		Body: tempFile,
+		Body: processedVideoFile,
 		ContentType: &mediaType,
 	})
 	if err != nil {
@@ -129,17 +137,11 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	videoData.VideoURL = &vidUrl 
 
-	fmt.Println(vidUrl)
-
-
-
 	err = cfg.db.UpdateVideo(videoData)
 	if err != nil {
 		respondWithError(w , 500 , "Error Updating the video" , err)
 		return
 	}
-
-	fmt.Println(videoData)
 
 	respondWithJSON(w , 200 , videoData)
 }
